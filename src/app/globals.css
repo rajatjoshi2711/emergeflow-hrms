@@ -1,26 +1,290 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- EmergeFlow brand blue --- */
+  --blue-50: #eaf2fb;
+  --blue-100: #ccddf1;
+  --blue-200: #99bbe3;
+  --blue-300: #6699d5;
+  --blue-400: #3377c7;
+  --blue-500: #0d519b;
+  --blue-600: #0a4280;
+  --blue-700: #083464;
+  --blue-800: #062649;
+  --blue-900: #04182e;
+
+  /* --- EmergeFlow brand green (accent only, never primary CTA) --- */
+  --green-50: #f1f8e7;
+  --green-100: #dfeec4;
+  --green-200: #c0dd8e;
+  --green-300: #a1cc58;
+  --green-400: #8dc340;
+  --green-500: #78b833;
+  --green-600: #5f9226;
+  --green-700: #496f1d;
+  --green-800: #335015;
+  --green-900: #1f320c;
+
+  /* --- Cool neutrals --- */
+  --neutral-25: #fafbfc;
+  --neutral-50: #f4f6f8;
+  --neutral-100: #e8ecf1;
+  --neutral-200: #d2dae3;
+  --neutral-300: #b0bbc9;
+  --neutral-400: #8896a8;
+  --neutral-500: #5d6e84;
+  --neutral-600: #44546a;
+  --neutral-700: #2f3d52;
+  --neutral-800: #1e2a3d;
+  --neutral-900: #111928;
+
+  /* --- Semantic (status only) --- */
+  --success: #78b833;
+  --warning: #e0a012;
+  --danger: #d7373f;
+  --info: #0d519b;
+  --success-soft: #f1f8e7;
+  --warning-soft: #fbf1dc;
+  --danger-soft: #fbe9ea;
+  --info-soft: #eaf2fb;
+
+  /* --- Common roles --- */
+  --text-primary: var(--neutral-900);
+  --text-secondary: var(--neutral-600);
+  --bg-page: #ffffff;
+  --bg-subtle: var(--neutral-25);
+  --border: var(--neutral-200);
+  --border-subtle: var(--neutral-100);
+
+  /* --- Gradients --- */
+  --grad-brand: linear-gradient(135deg, #0d519b 0%, #2a78c2 55%, #78b833 100%);
+  --grad-deep: linear-gradient(180deg, #062649 0%, #0a4280 100%);
+  --grad-brand-soft: linear-gradient(135deg, #eaf2fb 0%, #f1f8e7 100%);
+
+  /* --- Radii --- */
+  --radius-button: 10px;
+  --radius-card: 14px;
+  --radius-hero: 24px;
+
+  /* --- Shadows (cool-tinted on blue) --- */
+  --shadow-sm: 0 1px 2px rgba(13, 81, 155, 0.08);
+  --shadow-md: 0 4px 12px rgba(13, 81, 155, 0.1);
+  --shadow-lg: 0 12px 32px rgba(13, 81, 155, 0.14);
+
+  /* --- Motion --- */
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 240ms;
+  --dur-4: 360ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --max-marketing: 1120px;
+  --max-product: 1280px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-blue-50: var(--blue-50);
+  --color-blue-100: var(--blue-100);
+  --color-blue-200: var(--blue-200);
+  --color-blue-300: var(--blue-300);
+  --color-blue-400: var(--blue-400);
+  --color-blue-500: var(--blue-500);
+  --color-blue-600: var(--blue-600);
+  --color-blue-700: var(--blue-700);
+  --color-blue-800: var(--blue-800);
+  --color-blue-900: var(--blue-900);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-green-50: var(--green-50);
+  --color-green-100: var(--green-100);
+  --color-green-200: var(--green-200);
+  --color-green-300: var(--green-300);
+  --color-green-400: var(--green-400);
+  --color-green-500: var(--green-500);
+  --color-green-600: var(--green-600);
+  --color-green-700: var(--green-700);
+  --color-green-800: var(--green-800);
+  --color-green-900: var(--green-900);
+
+  --color-neutral-25: var(--neutral-25);
+  --color-neutral-50: var(--neutral-50);
+  --color-neutral-100: var(--neutral-100);
+  --color-neutral-200: var(--neutral-200);
+  --color-neutral-300: var(--neutral-300);
+  --color-neutral-400: var(--neutral-400);
+  --color-neutral-500: var(--neutral-500);
+  --color-neutral-600: var(--neutral-600);
+  --color-neutral-700: var(--neutral-700);
+  --color-neutral-800: var(--neutral-800);
+  --color-neutral-900: var(--neutral-900);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --font-display: var(--font-sora), system-ui, sans-serif;
+  --font-body: var(--font-manrope), system-ui, sans-serif;
+  --font-mono-token: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  --radius-button: var(--radius-button);
+  --radius-card: var(--radius-card);
+  --radius-hero: var(--radius-hero);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------- */
+/* EmergeFlow typography utilities                                        */
+/* ---------------------------------------------------------------------- */
+
+.ef-page {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1.15;
+}
+.ef-h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.25;
+}
+.ef-lead {
+  font-family: var(--font-body);
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.ef-small {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ef-caption {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.ef-eyebrow {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--blue-500);
+}
+.ef-accent {
+  color: var(--green-500);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Buttons - sentence case labels, green is never a primary action        */
+/* ---------------------------------------------------------------------- */
+
+.ef-btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: var(--radius-button);
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background var(--dur-2) var(--ease-out),
+    transform var(--dur-1) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
+}
+.ef-btn:active {
+  transform: translateY(1px);
+}
+.ef-btn-primary {
+  background: var(--blue-500);
+  color: #fff;
+}
+.ef-btn-primary:hover {
+  background: var(--blue-600);
+}
+.ef-btn-secondary {
+  background: #fff;
+  color: var(--blue-500);
+  border-color: var(--blue-500);
+}
+.ef-btn-secondary:hover {
+  background: var(--blue-50);
+}
+.ef-btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+.ef-btn-danger:hover {
+  background: #be2d34;
+}
+.ef-btn:disabled,
+.ef-btn-disabled {
+  background: var(--blue-200);
+  color: #fff;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Badges                                                                  */
+/* ---------------------------------------------------------------------- */
+
+.ef-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.ef-badge-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.ef-badge-success {
+  background: var(--success-soft);
+  color: var(--green-700);
+}
+.ef-badge-warning {
+  background: var(--warning-soft);
+  color: #9a6c0c;
+}
+.ef-badge-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.ef-badge-neutral {
+  background: var(--neutral-100);
+  color: var(--neutral-700);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Cards                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.ef-card {
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ef-container-product {
+  max-width: var(--max-product);
+  margin-inline: auto;
+  padding-inline: 24px;
 }

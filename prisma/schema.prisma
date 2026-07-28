@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Employees & roles
+// ---------------------------------------------------------------------------
+
+enum Role {
+  admin
+  hr
+  employee
+}
+
+enum EmploymentType {
+  full_time
+  intern
+}
+
+enum EmployeeStatus {
+  active
+  exited
+}
+
+model Employee {
+  id             String         @id @default(uuid())
+  employeeCode   String         @unique @map("employee_code")
+  name           String
+  email          String         @unique
+  passwordHash   String         @map("password_hash")
+  role           Role           @default(employee)
+  employmentType EmploymentType @map("employment_type")
+  joinDate       DateTime       @map("join_date") @db.Date
+  status         EmployeeStatus @default(active)
+
+  assignedAdminId String?    @map("assigned_admin_id")
+  assignedAdmin   Employee?  @relation("AdminAssignment", fields: [assignedAdminId], references: [id])
+  assignees       Employee[] @relation("AdminAssignment")
+
+  leaveLedgerEntries        LeaveLedgerEntry[]         @relation("LeaveLedgerOwner")
+  leaveLedgerEntriesCreated LeaveLedgerEntry[]         @relation("LeaveLedgerCreatedBy")
+  leaveBalances             LeaveBalance[]
+  leaveRequests             LeaveRequest[]             @relation("LeaveRequester")
+  leaveRequestsApproved     LeaveRequest[]             @relation("LeaveApprover")
+  wfhRequests               WfhRequest[]               @relation("WfhRequester")
+  wfhRequestsApproved       WfhRequest[]               @relation("WfhApprover")
+  wfhLedgerEntries          WfhLedgerEntry[]
+  wfhBalances               WfhBalance[]
+  floatingHolidaySelections FloatingHolidaySelection[]
+
+  @@map("employees")
+}
+
+// ---------------------------------------------------------------------------
+// Leave types, ledger & balances
+// ---------------------------------------------------------------------------
+
+enum LeaveCode {
+  planned
+  unplanned
+}
+
+// Accrual cadence (quarterly for full-time, monthly for interns) is derived
+// from Employee.employmentType at accrual time, not stored per leave type -
+// there are only ever two rows here: planned and unplanned.
+model LeaveType {
+  id   Int       @id @db.SmallInt
+  code LeaveCode @unique
+
+  leaveLedgerEntries LeaveLedgerEntry[]
+  leaveBalances      LeaveBalance[]
+  leaveRequests      LeaveRequest[]
+
+  @@map("leave_types")
+}
+
+enum LedgerEntryType {
+  credit
+  debit
+  lapse
+  adjustment
+}
+
+model LeaveLedgerEntry {
+  id            String          @id @default(uuid())
+  employeeId    String          @map("employee_id")
+  employee      Employee        @relation("LeaveLedgerOwner", fields: [employeeId], references: [id])
+  leaveTypeId   Int             @map("leave_type_id") @db.SmallInt
+  leaveType     LeaveType       @relation(fields: [leaveTypeId], references: [id])
+  entryType     LedgerEntryType @map("entry_type")
+  amount        Decimal         @db.Decimal(4, 1)
+  effectiveDate DateTime        @map("effective_date") @db.Date
+  reason        String?
+  createdById   String?         @map("created_by")
+  createdBy     Employee?       @relation("LeaveLedgerCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@index([employeeId, leaveTypeId, effectiveDate])
+  @@map("leave_ledger_entries")
+}
+
+model LeaveBalance {
+  employeeId    String    @map("employee_id")
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+  leaveTypeId   Int       @map("leave_type_id") @db.SmallInt
+  leaveType     LeaveType @relation(fields: [leaveTypeId], references: [id])
+  year          Int
+  creditedTotal Decimal   @default(0) @map("credited_total") @db.Decimal(4, 1)
+  used          Decimal   @default(0) @db.Decimal(4, 1)
+  lapsed        Decimal   @default(0) @db.Decimal(4, 1)
+
+  @@id([employeeId, leaveTypeId, year])
+  @@map("leave_balances")
+}
+
+// ---------------------------------------------------------------------------
+// Leave requests
+// ---------------------------------------------------------------------------
+
+enum DayPart {
+  full
+  first_half
+  second_half
+}
+
+enum RequestStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+model LeaveRequest {
+  id            String        @id @default(uuid())
+  employeeId    String        @map("employee_id")
+  employee      Employee      @relation("LeaveRequester", fields: [employeeId], references: [id])
+  leaveTypeId   Int           @map("leave_type_id") @db.SmallInt
+  leaveType     LeaveType     @relation(fields: [leaveTypeId], references: [id])
+  reason        String?
+  status        RequestStatus @default(pending)
+  approverId    String?       @map("approver_id")
+  approver      Employee?     @relation("LeaveApprover", fields: [approverId], references: [id])
+  isRetroactive Boolean       @default(false) @map("is_retroactive")
+  requestedAt   DateTime      @default(now()) @map("requested_at")
+  decidedAt     DateTime?     @map("decided_at")
+
+  days LeaveRequestDay[]
+
+  @@index([employeeId, status])
+  @@index([approverId, status])
+  @@map("leave_requests")
+}
+
+model LeaveRequestDay {
+  leaveRequestId String       @map("leave_request_id")
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id])
+  leaveDate      DateTime     @map("leave_date") @db.Date
+  dayPart        DayPart      @default(full) @map("day_part")
+
+  @@id([leaveRequestId, leaveDate])
+  @@map("leave_request_days")
+}
+
+// ---------------------------------------------------------------------------
+// Work from home
+// ---------------------------------------------------------------------------
+
+model WfhRequest {
+  id          String        @id @default(uuid())
+  employeeId  String        @map("employee_id")
+  employee    Employee      @relation("WfhRequester", fields: [employeeId], references: [id])
+  wfhDate     DateTime      @map("wfh_date") @db.Date
+  status      RequestStatus @default(pending)
+  approverId  String?       @map("approver_id")
+  approver    Employee?     @relation("WfhApprover", fields: [approverId], references: [id])
+  requestedAt DateTime      @default(now()) @map("requested_at")
+  decidedAt   DateTime?     @map("decided_at")
+
+  @@index([employeeId, status])
+  @@index([approverId, status])
+  @@map("wfh_requests")
+}
+
+model WfhLedgerEntry {
+  id            String          @id @default(uuid())
+  employeeId    String          @map("employee_id")
+  employee      Employee        @relation(fields: [employeeId], references: [id])
+  entryType     LedgerEntryType @map("entry_type")
+  amount        Decimal         @db.Decimal(4, 1)
+  effectiveDate DateTime        @map("effective_date") @db.Date
+  reason        String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@index([employeeId, effectiveDate])
+  @@map("wfh_ledger_entries")
+}
+
+model WfhBalance {
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  year       Int
+  credited   Decimal  @default(0) @db.Decimal(4, 1)
+  used       Decimal  @default(0) @db.Decimal(4, 1)
+  lapsed     Decimal  @default(0) @db.Decimal(4, 1)
+
+  @@id([employeeId, year])
+  @@map("wfh_balances")
+}
+
+// ---------------------------------------------------------------------------
+// Holidays
+// ---------------------------------------------------------------------------
+
+enum HolidayType {
+  fixed
+  floating
+}
+
+model Holiday {
+  id             String      @id @default(uuid())
+  name           String
+  holidayDate    DateTime    @map("holiday_date") @db.Date
+  holidayType    HolidayType @map("holiday_type")
+  applicableYear Int         @map("applicable_year")
+
+  floatingSelections FloatingHolidaySelection[]
+
+  @@index([applicableYear])
+  @@map("holidays")
+}
+
+model HolidayPolicy {
+  applicableYear            Int @id @map("applicable_year")
+  maxFloatingHolidaysPerEmp Int @map("max_floating_holidays_per_emp")
+
+  @@map("holiday_policy")
+}
+
+model FloatingHolidaySelection {
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  holidayId  String   @map("holiday_id")
+  holiday    Holiday  @relation(fields: [holidayId], references: [id])
+  year       Int
+
+  @@id([employeeId, holidayId])
+  @@map("floating_holiday_selections")
+}
