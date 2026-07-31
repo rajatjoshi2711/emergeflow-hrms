@@ -1,16 +1,23 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getLeaveBalance } from "@/lib/leave";
+import { getHolidaysForYear, getHolidayPolicy } from "@/lib/holidays";
+import { getTodayRoster } from "@/lib/roster";
 import { LogoutButton } from "@/components/LogoutButton";
 import { AdminApprovalQueue } from "@/components/AdminApprovalQueue";
 import { AdminRecentDecisions } from "@/components/AdminRecentDecisions";
 import { AdminWfhApprovalQueue } from "@/components/AdminWfhApprovalQueue";
+import { AdminHolidayManager } from "@/components/AdminHolidayManager";
+import { AdminEmployeeAssignment } from "@/components/AdminEmployeeAssignment";
+import { TodayRoster } from "@/components/TodayRoster";
 
 export default async function AdminDashboard() {
   const session = await getSession();
   if (!session) return null;
 
-  const [pending, recentDecisions, pendingWfh] = await Promise.all([
+  const year = new Date().getFullYear();
+
+  const [pending, recentDecisions, pendingWfh, holidays, policy, roster, employees, admins] = await Promise.all([
     prisma.leaveRequest.findMany({
       where: { status: "pending", employee: { assignedAdminId: session.employeeId } },
       include: { employee: true, leaveType: true, days: true },
@@ -27,12 +34,17 @@ export default async function AdminDashboard() {
       include: { employee: true },
       orderBy: { requestedAt: "asc" },
     }),
+    getHolidaysForYear(year),
+    getHolidayPolicy(year),
+    getTodayRoster(),
+    prisma.employee.findMany({ where: { role: { not: "admin" } }, orderBy: { name: "asc" } }),
+    prisma.employee.findMany({ where: { role: "admin" }, orderBy: { name: "asc" } }),
   ]);
 
   const pendingWithBalance = await Promise.all(
     pending.map(async (request) => {
-      const year = request.days[0].leaveDate.getUTCFullYear();
-      const balance = await getLeaveBalance(request.employeeId, request.leaveTypeId, year);
+      const requestYear = request.days[0].leaveDate.getUTCFullYear();
+      const balance = await getLeaveBalance(request.employeeId, request.leaveTypeId, requestYear);
       return { ...request, availableBalance: balance.available };
     })
   );
@@ -60,6 +72,21 @@ export default async function AdminDashboard() {
       <div>
         <h2 className="ef-h3 mb-3">Recent decisions</h2>
         <AdminRecentDecisions decisions={recentDecisions} />
+      </div>
+
+      <div>
+        <h2 className="ef-h3 mb-3">Today&apos;s roster</h2>
+        <TodayRoster roster={roster} />
+      </div>
+
+      <div>
+        <h2 className="ef-h3 mb-3">Employee assignment</h2>
+        <AdminEmployeeAssignment employees={employees} admins={admins} />
+      </div>
+
+      <div>
+        <h2 className="ef-h3 mb-3">Holiday calendar</h2>
+        <AdminHolidayManager year={year} holidays={holidays} maxFloatingHolidaysPerEmp={policy?.maxFloatingHolidaysPerEmp ?? 0} />
       </div>
     </div>
   );

@@ -1,8 +1,11 @@
 import { getSession } from "@/lib/auth";
+import { getTodayRoster } from "@/lib/roster";
 import { LogoutButton } from "@/components/LogoutButton";
+import { TodayRoster } from "@/components/TodayRoster";
 
 export default async function HrDashboard() {
   const session = await getSession();
+  const roster = await getTodayRoster();
 
   return (
     <div className="ef-container-product flex flex-col gap-4 py-12">
@@ -13,10 +16,10 @@ export default async function HrDashboard() {
         </div>
         <LogoutButton />
       </div>
-      <p className="ef-body">
-        The company-wide roster (who&apos;s in, on leave, or WFH today) lands in a later
-        build phase.
-      </p>
+      <div>
+        <h2 className="ef-h3 mb-3">Today&apos;s roster</h2>
+        <TodayRoster roster={roster} />
+      </div>
     </div>
   );
 }
