@@ -2,12 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-const ROLE_HOME: Record<string, string> = {
-  admin: "/admin",
-  hr: "/hr",
-  employee: "/employee",
-};
+import { ROLE_HOME } from "@/lib/roles";
+import type { Role } from "@/generated/prisma/enums";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,7 +30,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(ROLE_HOME[data.role] ?? "/");
+      router.push(ROLE_HOME[data.role as Role] ?? "/");
       router.refresh();
     } catch {
       setError("Could not reach the server. Try again.");
