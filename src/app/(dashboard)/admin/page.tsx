@@ -4,12 +4,13 @@ import { getLeaveBalance } from "@/lib/leave";
 import { LogoutButton } from "@/components/LogoutButton";
 import { AdminApprovalQueue } from "@/components/AdminApprovalQueue";
 import { AdminRecentDecisions } from "@/components/AdminRecentDecisions";
+import { AdminWfhApprovalQueue } from "@/components/AdminWfhApprovalQueue";
 
 export default async function AdminDashboard() {
   const session = await getSession();
   if (!session) return null;
 
-  const [pending, recentDecisions] = await Promise.all([
+  const [pending, recentDecisions, pendingWfh] = await Promise.all([
     prisma.leaveRequest.findMany({
       where: { status: "pending", employee: { assignedAdminId: session.employeeId } },
       include: { employee: true, leaveType: true, days: true },
@@ -20,6 +21,11 @@ export default async function AdminDashboard() {
       include: { employee: true, leaveType: true, days: true },
       orderBy: { decidedAt: "desc" },
       take: 10,
+    }),
+    prisma.wfhRequest.findMany({
+      where: { status: "pending", employee: { assignedAdminId: session.employeeId } },
+      include: { employee: true },
+      orderBy: { requestedAt: "asc" },
     }),
   ]);
 
@@ -42,8 +48,13 @@ export default async function AdminDashboard() {
       </div>
 
       <div>
-        <h2 className="ef-h3 mb-3">Pending approvals</h2>
+        <h2 className="ef-h3 mb-3">Pending leave approvals</h2>
         <AdminApprovalQueue pendingRequests={pendingWithBalance} />
+      </div>
+
+      <div>
+        <h2 className="ef-h3 mb-3">Pending WFH approvals</h2>
+        <AdminWfhApprovalQueue pendingRequests={pendingWfh} />
       </div>
 
       <div>
