@@ -3,16 +3,18 @@ import {
   FULL_TIME_QUARTERLY_LEAVE_PER_TYPE,
   INTERN_MONTHLY_LEAVE_PER_TYPE,
   MONTHLY_WFH_CREDIT,
-  computeProratedAmount,
+  accrualPeriodStarts,
+  creditForPeriod,
   isMonthStart,
   isQuarterStart,
-  previousMonthStart,
-  previousQuarterStart,
+  nextPeriodStart,
+  periodStartFor,
   roundToHalf,
   toUtcDateOnly,
 } from "./leave-rules";
 
 const utc = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+const ymd = (date: Date) => date.toISOString().slice(0, 10);
 
 describe("entitlement constants match the design doc", () => {
   it("gives full-time employees 8 of each leave type per year", () => {
@@ -28,44 +30,42 @@ describe("entitlement constants match the design doc", () => {
   });
 });
 
-describe("isMonthStart", () => {
-  it("is true on the 1st", () => {
+describe("isMonthStart / isQuarterStart", () => {
+  it("detects the 1st of a month", () => {
     expect(isMonthStart(utc("2026-03-01"))).toBe(true);
-  });
-
-  it("is false on any other day", () => {
     expect(isMonthStart(utc("2026-03-02"))).toBe(false);
-    expect(isMonthStart(utc("2026-03-31"))).toBe(false);
   });
-});
 
-describe("isQuarterStart", () => {
-  it("is true on Jan/Apr/Jul/Oct 1st", () => {
+  it("detects Jan/Apr/Jul/Oct 1st only", () => {
     for (const iso of ["2026-01-01", "2026-04-01", "2026-07-01", "2026-10-01"]) {
       expect(isQuarterStart(utc(iso))).toBe(true);
     }
-  });
-
-  it("is false on the 1st of a non-quarter month", () => {
-    for (const iso of ["2026-02-01", "2026-06-01", "2026-12-01"]) {
+    for (const iso of ["2026-02-01", "2026-12-01", "2026-04-15"]) {
       expect(isQuarterStart(utc(iso))).toBe(false);
     }
   });
+});
 
-  it("is false mid-quarter-month", () => {
-    expect(isQuarterStart(utc("2026-04-15"))).toBe(false);
+describe("periodStartFor", () => {
+  it("snaps to the containing month", () => {
+    expect(ymd(periodStartFor(utc("2026-06-16"), "monthly"))).toBe("2026-06-01");
+    expect(ymd(periodStartFor(utc("2026-06-01"), "monthly"))).toBe("2026-06-01");
+  });
+
+  it("snaps to the containing quarter", () => {
+    expect(ymd(periodStartFor(utc("2026-02-15"), "quarterly"))).toBe("2026-01-01");
+    expect(ymd(periodStartFor(utc("2026-05-20"), "quarterly"))).toBe("2026-04-01");
+    expect(ymd(periodStartFor(utc("2026-12-31"), "quarterly"))).toBe("2026-10-01");
   });
 });
 
-describe("period start helpers", () => {
-  it("walks back one month, including across a year boundary", () => {
-    expect(previousMonthStart(utc("2026-03-01")).toISOString()).toBe("2026-02-01T00:00:00.000Z");
-    expect(previousMonthStart(utc("2026-01-01")).toISOString()).toBe("2025-12-01T00:00:00.000Z");
+describe("nextPeriodStart", () => {
+  it("advances a month, crossing the year boundary", () => {
+    expect(ymd(nextPeriodStart(utc("2026-12-01"), "monthly"))).toBe("2027-01-01");
   });
 
-  it("walks back one quarter, including across a year boundary", () => {
-    expect(previousQuarterStart(utc("2026-07-01")).toISOString()).toBe("2026-04-01T00:00:00.000Z");
-    expect(previousQuarterStart(utc("2026-01-01")).toISOString()).toBe("2025-10-01T00:00:00.000Z");
+  it("advances a quarter, crossing the year boundary", () => {
+    expect(ymd(nextPeriodStart(utc("2026-10-01"), "quarterly"))).toBe("2027-01-01");
   });
 });
 
@@ -86,35 +86,78 @@ describe("toUtcDateOnly", () => {
   });
 });
 
-describe("computeProratedAmount", () => {
-  const quarterStart = utc("2026-04-01");
-  const quarterEnd = utc("2026-07-01");
-
-  it("credits the full amount when employed for the whole period", () => {
-    expect(computeProratedAmount(2, quarterStart, quarterEnd, utc("2024-01-01"))).toBe(2);
+describe("creditForPeriod", () => {
+  it("gives the full quarterly amount to someone employed when the quarter opens", () => {
+    // Regression: this used to prorate against the quarter that had just ended,
+    // handing a Feb joiner 1 day on 1 Apr despite working all of Q2.
+    expect(creditForPeriod(2, utc("2026-04-01"), "quarterly", utc("2026-02-15"))).toBe(2);
   });
 
-  it("credits the full amount when joining exactly on the period start", () => {
-    expect(computeProratedAmount(2, quarterStart, quarterEnd, quarterStart)).toBe(2);
+  it("gives the full monthly amount to someone employed when the month opens", () => {
+    expect(creditForPeriod(1, utc("2026-07-01"), "monthly", utc("2026-06-16"))).toBe(1);
   });
 
-  it("credits roughly half when joining mid-period", () => {
-    // 2026-05-17 leaves 45 of 91 days, so 2 * (45/91) = 0.989 -> 1
-    expect(computeProratedAmount(2, quarterStart, quarterEnd, utc("2026-05-17"))).toBe(1);
+  it("gives the full amount when joining exactly on the period start", () => {
+    expect(creditForPeriod(2, utc("2026-04-01"), "quarterly", utc("2026-04-01"))).toBe(2);
   });
 
-  it("credits nothing when joining on or after the period end", () => {
-    expect(computeProratedAmount(2, quarterStart, quarterEnd, quarterEnd)).toBe(0);
-    expect(computeProratedAmount(2, quarterStart, quarterEnd, utc("2026-08-01"))).toBe(0);
+  it("prorates the quarter the employee joins partway through", () => {
+    // Joined 15 Feb, Q1 runs Jan-Mar: 44 of 90 days left -> 2 * 0.489 = 0.978 -> 1
+    expect(creditForPeriod(2, utc("2026-01-01"), "quarterly", utc("2026-02-15"))).toBe(1);
   });
 
-  it("rounds to half days rather than arbitrary fractions", () => {
-    const amount = computeProratedAmount(2, quarterStart, quarterEnd, utc("2026-06-20"));
-    expect(amount % 0.5).toBe(0);
+  it("prorates the month the employee joins partway through", () => {
+    // Joined 16 Jun, June has 30 days, 15 remain -> 1 * 0.5 = 0.5
+    expect(creditForPeriod(1, utc("2026-06-01"), "monthly", utc("2026-06-16"))).toBe(0.5);
   });
 
-  it("prorates a monthly intern credit", () => {
-    // Joined 2026-06-16, period is June: 15 of 30 days -> 1 * 0.5 = 0.5
-    expect(computeProratedAmount(1, utc("2026-06-01"), utc("2026-07-01"), utc("2026-06-16"))).toBe(0.5);
+  it("credits nothing for a period that ended before the employee joined", () => {
+    expect(creditForPeriod(2, utc("2026-01-01"), "quarterly", utc("2026-04-01"))).toBe(0);
+    expect(creditForPeriod(2, utc("2026-01-01"), "quarterly", utc("2026-08-01"))).toBe(0);
+  });
+
+  it("only ever returns whole or half days", () => {
+    for (const joinDay of [2, 7, 13, 19, 23, 28]) {
+      const amount = creditForPeriod(2, utc("2026-04-01"), "quarterly", utc(`2026-05-${String(joinDay).padStart(2, "0")}`));
+      expect(amount % 0.5).toBe(0);
+    }
+  });
+});
+
+describe("accrualPeriodStarts", () => {
+  it("lists each quarter from the join quarter to the current one", () => {
+    const periods = accrualPeriodStarts(utc("2026-02-15"), utc("2026-07-01"), "quarterly");
+    expect(periods.map(ymd)).toEqual(["2026-01-01", "2026-04-01", "2026-07-01"]);
+  });
+
+  it("lists each month from the join month to the current one", () => {
+    const periods = accrualPeriodStarts(utc("2026-06-16"), utc("2026-08-01"), "monthly");
+    expect(periods.map(ymd)).toEqual(["2026-06-01", "2026-07-01", "2026-08-01"]);
+  });
+
+  it("does not reach back past the current year, since balances lapse annually", () => {
+    const periods = accrualPeriodStarts(utc("2023-05-10"), utc("2026-04-01"), "quarterly");
+    expect(periods.map(ymd)).toEqual(["2026-01-01", "2026-04-01"]);
+  });
+
+  it("returns the single current period when run on the join date", () => {
+    const periods = accrualPeriodStarts(utc("2026-04-01"), utc("2026-04-01"), "quarterly");
+    expect(periods.map(ymd)).toEqual(["2026-04-01"]);
+  });
+
+  it("catches up every missed month when a run is skipped", () => {
+    const periods = accrualPeriodStarts(utc("2026-01-01"), utc("2026-05-01"), "monthly");
+    expect(periods).toHaveLength(5);
+  });
+});
+
+describe("a full-time employee joining mid-quarter, across the year", () => {
+  it("gets the partial join quarter plus full credit for every later quarter", () => {
+    const joinDate = utc("2026-02-15");
+    const periods = accrualPeriodStarts(joinDate, utc("2026-10-01"), "quarterly");
+    const amounts = periods.map((p) => creditForPeriod(2, p, "quarterly", joinDate));
+
+    expect(amounts).toEqual([1, 2, 2, 2]);
+    expect(amounts.reduce((a, b) => a + b, 0)).toBe(7);
   });
 });

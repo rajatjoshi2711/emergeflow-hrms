@@ -3,131 +3,133 @@ import {
   FULL_TIME_QUARTERLY_LEAVE_PER_TYPE,
   INTERN_MONTHLY_LEAVE_PER_TYPE,
   MONTHLY_WFH_CREDIT,
-  computeProratedAmount,
-  previousMonthStart,
-  previousQuarterStart,
+  type Cadence,
+  accrualPeriodStarts,
+  creditForPeriod,
   toUtcDateOnly,
 } from "@/lib/leave-rules";
 import { LEAVE_TYPE_ID } from "@/lib/leave";
+import type { EmploymentType } from "@/generated/prisma/enums";
 
-async function alreadyCreditedToday(employeeId: string, leaveTypeId: number, today: Date) {
-  const existing = await prisma.leaveLedgerEntry.findFirst({
-    where: { employeeId, leaveTypeId, entryType: "credit", effectiveDate: today },
-  });
-  return existing !== null;
-}
+/** The one place the full-time vs intern difference lives. */
+export const LEAVE_ACCRUAL: Record<EmploymentType, { cadence: Cadence; amountPerType: number }> = {
+  full_time: { cadence: "quarterly", amountPerType: FULL_TIME_QUARTERLY_LEAVE_PER_TYPE },
+  intern: { cadence: "monthly", amountPerType: INTERN_MONTHLY_LEAVE_PER_TYPE },
+};
 
-async function alreadyCreditedWfhToday(employeeId: string, today: Date) {
-  const existing = await prisma.wfhLedgerEntry.findFirst({
-    where: { employeeId, entryType: "credit", effectiveDate: today },
-  });
-  return existing !== null;
-}
+export type AccrualSummary = { employeesProcessed: number; creditsWritten: number };
 
 async function creditLeave(
   employeeId: string,
   leaveTypeId: number,
   amount: number,
-  year: number,
-  effectiveDate: Date,
+  periodStart: Date,
   reason: string
 ) {
-  if (amount <= 0) return;
   await prisma.$transaction([
     prisma.leaveLedgerEntry.create({
-      data: { employeeId, leaveTypeId, entryType: "credit", amount, effectiveDate, reason },
+      data: { employeeId, leaveTypeId, entryType: "credit", amount, effectiveDate: periodStart, reason },
     }),
     prisma.leaveBalance.upsert({
-      where: { employeeId_leaveTypeId_year: { employeeId, leaveTypeId, year } },
+      where: {
+        employeeId_leaveTypeId_year: { employeeId, leaveTypeId, year: periodStart.getUTCFullYear() },
+      },
       update: { creditedTotal: { increment: amount } },
-      create: { employeeId, leaveTypeId, year, creditedTotal: amount },
+      create: {
+        employeeId,
+        leaveTypeId,
+        year: periodStart.getUTCFullYear(),
+        creditedTotal: amount,
+      },
     }),
   ]);
 }
 
-async function creditWfh(employeeId: string, amount: number, year: number, effectiveDate: Date, reason: string) {
-  if (amount <= 0) return;
+async function creditWfh(employeeId: string, amount: number, periodStart: Date, reason: string) {
   await prisma.$transaction([
-    prisma.wfhLedgerEntry.create({ data: { employeeId, entryType: "credit", amount, effectiveDate, reason } }),
+    prisma.wfhLedgerEntry.create({
+      data: { employeeId, entryType: "credit", amount, effectiveDate: periodStart, reason },
+    }),
     prisma.wfhBalance.upsert({
-      where: { employeeId_year: { employeeId, year } },
+      where: { employeeId_year: { employeeId, year: periodStart.getUTCFullYear() } },
       update: { credited: { increment: amount } },
-      create: { employeeId, year, credited: amount },
+      create: { employeeId, year: periodStart.getUTCFullYear(), credited: amount },
     }),
   ]);
 }
 
-export async function runFullTimeQuarterlyAccrual(today: Date) {
+/**
+ * Credits every leave period the employee is owed for the current year and has
+ * not already been credited for. The ledger's (employee, type, effectiveDate)
+ * row is the idempotency key, so re-running is a no-op and a missed cron run
+ * is picked up by the next one.
+ */
+export async function runLeaveAccrual(today: Date): Promise<AccrualSummary> {
   const day = toUtcDateOnly(today);
-  const periodStart = previousQuarterStart(day);
-  const year = day.getUTCFullYear();
-  const employees = await prisma.employee.findMany({ where: { status: "active", employmentType: "full_time" } });
-
-  let credited = 0;
-  for (const employee of employees) {
-    for (const leaveTypeId of [LEAVE_TYPE_ID.planned, LEAVE_TYPE_ID.unplanned]) {
-      if (await alreadyCreditedToday(employee.id, leaveTypeId, day)) continue;
-
-      const isFirst = !(await prisma.leaveLedgerEntry.findFirst({
-        where: { employeeId: employee.id, leaveTypeId, entryType: "credit" },
-      }));
-      const amount = isFirst
-        ? computeProratedAmount(FULL_TIME_QUARTERLY_LEAVE_PER_TYPE, periodStart, day, toUtcDateOnly(employee.joinDate))
-        : FULL_TIME_QUARTERLY_LEAVE_PER_TYPE;
-
-      await creditLeave(employee.id, leaveTypeId, amount, year, day, isFirst ? "First-period prorated accrual" : "Quarterly accrual");
-      if (amount > 0) credited++;
-    }
-  }
-  return { employeesProcessed: employees.length, creditsWritten: credited };
-}
-
-export async function runInternMonthlyAccrual(today: Date) {
-  const day = toUtcDateOnly(today);
-  const periodStart = previousMonthStart(day);
-  const year = day.getUTCFullYear();
-  const employees = await prisma.employee.findMany({ where: { status: "active", employmentType: "intern" } });
-
-  let credited = 0;
-  for (const employee of employees) {
-    for (const leaveTypeId of [LEAVE_TYPE_ID.planned, LEAVE_TYPE_ID.unplanned]) {
-      if (await alreadyCreditedToday(employee.id, leaveTypeId, day)) continue;
-
-      const isFirst = !(await prisma.leaveLedgerEntry.findFirst({
-        where: { employeeId: employee.id, leaveTypeId, entryType: "credit" },
-      }));
-      const amount = isFirst
-        ? computeProratedAmount(INTERN_MONTHLY_LEAVE_PER_TYPE, periodStart, day, toUtcDateOnly(employee.joinDate))
-        : INTERN_MONTHLY_LEAVE_PER_TYPE;
-
-      await creditLeave(employee.id, leaveTypeId, amount, year, day, isFirst ? "First-period prorated accrual" : "Monthly accrual");
-      if (amount > 0) credited++;
-    }
-  }
-  return { employeesProcessed: employees.length, creditsWritten: credited };
-}
-
-export async function runWfhMonthlyAccrual(today: Date) {
-  const day = toUtcDateOnly(today);
-  const periodStart = previousMonthStart(day);
-  const year = day.getUTCFullYear();
   const employees = await prisma.employee.findMany({ where: { status: "active" } });
 
-  let credited = 0;
+  let creditsWritten = 0;
   for (const employee of employees) {
-    if (await alreadyCreditedWfhToday(employee.id, day)) continue;
+    const { cadence, amountPerType } = LEAVE_ACCRUAL[employee.employmentType];
+    const joinDate = toUtcDateOnly(employee.joinDate);
+    const periods = accrualPeriodStarts(joinDate, day, cadence);
 
-    const isFirst = !(await prisma.wfhLedgerEntry.findFirst({
-      where: { employeeId: employee.id, entryType: "credit" },
-    }));
-    const amount = isFirst
-      ? computeProratedAmount(MONTHLY_WFH_CREDIT, periodStart, day, toUtcDateOnly(employee.joinDate))
-      : MONTHLY_WFH_CREDIT;
+    for (const leaveTypeId of [LEAVE_TYPE_ID.planned, LEAVE_TYPE_ID.unplanned]) {
+      for (const periodStart of periods) {
+        const existing = await prisma.leaveLedgerEntry.findFirst({
+          where: { employeeId: employee.id, leaveTypeId, entryType: "credit", effectiveDate: periodStart },
+        });
+        if (existing) continue;
 
-    await creditWfh(employee.id, amount, year, day, isFirst ? "First-period prorated accrual" : "Monthly accrual");
-    if (amount > 0) credited++;
+        const amount = creditForPeriod(amountPerType, periodStart, cadence, joinDate);
+        if (amount <= 0) continue;
+
+        const prorated = amount !== amountPerType;
+        await creditLeave(
+          employee.id,
+          leaveTypeId,
+          amount,
+          periodStart,
+          prorated ? "Prorated accrual (joined mid-period)" : `${cadence === "quarterly" ? "Quarterly" : "Monthly"} accrual`
+        );
+        creditsWritten++;
+      }
+    }
   }
-  return { employeesProcessed: employees.length, creditsWritten: credited };
+
+  return { employeesProcessed: employees.length, creditsWritten };
+}
+
+/** WFH is 2 days a month for everyone, regardless of employment type. */
+export async function runWfhAccrual(today: Date): Promise<AccrualSummary> {
+  const day = toUtcDateOnly(today);
+  const employees = await prisma.employee.findMany({ where: { status: "active" } });
+
+  let creditsWritten = 0;
+  for (const employee of employees) {
+    const joinDate = toUtcDateOnly(employee.joinDate);
+    const periods = accrualPeriodStarts(joinDate, day, "monthly");
+
+    for (const periodStart of periods) {
+      const existing = await prisma.wfhLedgerEntry.findFirst({
+        where: { employeeId: employee.id, entryType: "credit", effectiveDate: periodStart },
+      });
+      if (existing) continue;
+
+      const amount = creditForPeriod(MONTHLY_WFH_CREDIT, periodStart, "monthly", joinDate);
+      if (amount <= 0) continue;
+
+      await creditWfh(
+        employee.id,
+        amount,
+        periodStart,
+        amount !== MONTHLY_WFH_CREDIT ? "Prorated accrual (joined mid-month)" : "Monthly accrual"
+      );
+      creditsWritten++;
+    }
+  }
+
+  return { employeesProcessed: employees.length, creditsWritten };
 }
 
 export async function runYearEndLapse(today: Date) {
@@ -141,11 +143,20 @@ export async function runYearEndLapse(today: Date) {
       const balance = await prisma.leaveBalance.findUnique({
         where: { employeeId_leaveTypeId_year: { employeeId: employee.id, leaveTypeId, year } },
       });
-      const remaining = balance ? Number(balance.creditedTotal) - Number(balance.used) - Number(balance.lapsed) : 0;
+      const remaining = balance
+        ? Number(balance.creditedTotal) - Number(balance.used) - Number(balance.lapsed)
+        : 0;
       if (remaining > 0) {
         await prisma.$transaction([
           prisma.leaveLedgerEntry.create({
-            data: { employeeId: employee.id, leaveTypeId, entryType: "lapse", amount: remaining, effectiveDate: day, reason: "Year-end lapse" },
+            data: {
+              employeeId: employee.id,
+              leaveTypeId,
+              entryType: "lapse",
+              amount: remaining,
+              effectiveDate: day,
+              reason: "Year-end lapse",
+            },
           }),
           prisma.leaveBalance.update({
             where: { employeeId_leaveTypeId_year: { employeeId: employee.id, leaveTypeId, year } },
@@ -156,12 +167,22 @@ export async function runYearEndLapse(today: Date) {
       }
     }
 
-    const wfhBalance = await prisma.wfhBalance.findUnique({ where: { employeeId_year: { employeeId: employee.id, year } } });
-    const wfhRemaining = wfhBalance ? Number(wfhBalance.credited) - Number(wfhBalance.used) - Number(wfhBalance.lapsed) : 0;
+    const wfhBalance = await prisma.wfhBalance.findUnique({
+      where: { employeeId_year: { employeeId: employee.id, year } },
+    });
+    const wfhRemaining = wfhBalance
+      ? Number(wfhBalance.credited) - Number(wfhBalance.used) - Number(wfhBalance.lapsed)
+      : 0;
     if (wfhRemaining > 0) {
       await prisma.$transaction([
         prisma.wfhLedgerEntry.create({
-          data: { employeeId: employee.id, entryType: "lapse", amount: wfhRemaining, effectiveDate: day, reason: "Year-end lapse" },
+          data: {
+            employeeId: employee.id,
+            entryType: "lapse",
+            amount: wfhRemaining,
+            effectiveDate: day,
+            reason: "Year-end lapse",
+          },
         }),
         prisma.wfhBalance.update({
           where: { employeeId_year: { employeeId: employee.id, year } },

@@ -1,25 +1,22 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { isMonthStart, isQuarterStart } from "@/lib/leave-rules";
-import { runFullTimeQuarterlyAccrual, runInternMonthlyAccrual, runWfhMonthlyAccrual } from "@/lib/accrual";
+import { runLeaveAccrual, runWfhAccrual } from "@/lib/accrual";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 
+/**
+ * Runs on the 1st of every month. Both runners work out which periods each
+ * employee is owed (quarterly for full-time, monthly for interns, monthly WFH
+ * for everyone) and skip anything already credited, so this is safe to call
+ * on any date and safe to re-run.
+ */
 export async function GET(request: NextRequest) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
 
   const today = new Date();
-  const force = request.nextUrl.searchParams.get("force") === "true";
-  const results: Record<string, unknown> = {};
+  const leave = await runLeaveAccrual(today);
+  const wfh = await runWfhAccrual(today);
 
-  if (force || isMonthStart(today)) {
-    results.intern = await runInternMonthlyAccrual(today);
-    results.wfh = await runWfhMonthlyAccrual(today);
-  }
-  if (force || isQuarterStart(today)) {
-    results.fullTime = await runFullTimeQuarterlyAccrual(today);
-  }
-
-  return NextResponse.json({ ran: Object.keys(results), results });
+  return NextResponse.json({ leave, wfh });
 }

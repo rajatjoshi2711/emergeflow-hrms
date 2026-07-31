@@ -64,10 +64,23 @@ npm run lint    # eslint
 
 ## How the rules work
 
-**Accrual.** Full-time employees get 2 planned and 2 unplanned days each quarter
-(8 a year). Interns get 1 of each per month. Everyone gets 2 WFH days a month.
-An employee's first accrual is prorated from their join date; every period after
-that credits the full amount.
+**Accrual.** The cadence differs by employment type, and that difference lives in
+one place - `LEAVE_ACCRUAL` in `src/lib/accrual.ts`:
+
+| | Cadence | Per leave type | Per year |
+| --- | --- | --- | --- |
+| Full-time | quarterly | 2 | 8 |
+| Intern | monthly | 1 | 12 |
+| WFH (everyone) | monthly | 2 | 24 |
+
+A credit covers the period it opens, so anyone already employed on 1 April gets
+the full quarter. Only the period an employee *joins partway through* is
+prorated, by the fraction of it they will actually work, rounded to a half day.
+A full-time joiner starting 15 February therefore gets ~1 day for the remainder
+of Q1, then a full 2 on 1 April.
+
+Each run credits every period the employee is still owed for the current year,
+not just today's, so a missed cron run is picked up by the next one.
 
 **Lapsing.** Nothing lapses mid-year. Balances carry forward until 31 December,
 when a single job zeroes out everything unused.
@@ -88,27 +101,37 @@ rebuild them.
 
 `vercel.json` registers two cron entries:
 
-| Path | Schedule | Does |
+| Path | Schedule (UTC) | Does |
 | --- | --- | --- |
-| `/api/cron/accrual` | `0 0 1 * *` (1st of each month) | Monthly intern and WFH accrual; also quarterly full-time accrual when the 1st falls on a quarter boundary |
-| `/api/cron/lapse` | `0 0 31 12 *` (31 December) | Year-end lapse |
+| `/api/cron/accrual` | `0 0 1 * *` (1st of each month) | Credits whatever leave and WFH periods each employee is owed |
+| `/api/cron/lapse` | `0 23 31 12 *` (23:00 on 31 December) | Year-end lapse |
+
+Cron runs in UTC. The lapse job deliberately fires at 23:00 rather than 00:00 so
+that 31 December is still usable - at 00:00 UTC people would lose their balance
+before the last day had started. 23:00 UTC on the 31st is 04:30 IST on 1 January,
+after the year has ended locally, and still inside UTC-year 2026 so the job
+targets the right year.
 
 Both require `Authorization: Bearer $CRON_SECRET`, which Vercel Cron sends
-automatically. They fail closed if `CRON_SECRET` is unset. Both are idempotent -
-re-running on the same day writes nothing further - so a retry is safe.
+automatically. They fail closed if `CRON_SECRET` is unset, and both are
+idempotent, so a retry is safe.
 
-To trigger accrual manually outside a period boundary, add `?force=true`:
+This works on Vercel's Hobby plan: the Hobby limit is a *minimum* interval of one
+run per day, and monthly and yearly schedules are well under it. Hobby cron
+timing is only accurate to within the hour, which does not matter for either job.
+
+Accrual is safe to trigger by hand on any date - it credits only what is missing:
 
 ```bash
-curl -H "Authorization: Bearer $CRON_SECRET" \
-  "https://<host>/api/cron/accrual?force=true"
+curl -H "Authorization: Bearer $CRON_SECRET" "https://<host>/api/cron/accrual"
 ```
 
 **Do not run the lapse route against production to test it.** It zeroes real
-balances. Use `scripts/verify-lapse.ts` against a throwaway database instead;
-it refuses to run unless `DATABASE_URL` contains `hrms_test`.
+balances. Both jobs have verification scripts that run against a throwaway
+database and refuse to start unless `DATABASE_URL` contains `hrms_test`:
 
 ```bash
+DATABASE_URL="...hrms_test..." npx tsx scripts/verify-accrual.ts
 DATABASE_URL="...hrms_test..." npx tsx scripts/verify-lapse.ts
 ```
 
