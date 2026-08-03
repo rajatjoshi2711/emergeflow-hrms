@@ -22,9 +22,8 @@
  * person change it after first sign-in.
  */
 import "dotenv/config";
-import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/db";
+import { createEmployee } from "../src/lib/employees";
 import type { EmploymentType, Role } from "../src/generated/prisma/enums";
 
 const ROLES = ["admin", "hr", "employee"] as const;
@@ -38,10 +37,6 @@ function arg(name: string): string | undefined {
 function fail(message: string): never {
   console.error(`Error: ${message}`);
   process.exit(1);
-}
-
-function generatePassword(): string {
-  return randomBytes(12).toString("base64url");
 }
 
 async function main() {
@@ -63,43 +58,38 @@ async function main() {
   const joinDate = joinDateRaw ? new Date(`${joinDateRaw}T00:00:00.000Z`) : new Date();
   if (Number.isNaN(joinDate.getTime())) fail("--join-date must be YYYY-MM-DD");
 
-  const [emailTaken, codeTaken] = await Promise.all([
-    prisma.employee.findUnique({ where: { email } }),
-    prisma.employee.findUnique({ where: { employeeCode: code } }),
-  ]);
-  if (emailTaken) fail(`an employee already exists with email ${email}`);
-  if (codeTaken) fail(`an employee already exists with code ${code}`);
-
-  // Admins approve for themselves; everyone else needs an approver or their
-  // requests would have nowhere to go.
+  // The CLI identifies the approver by employee code; the shared helper wants an id.
   let assignedAdminId: string | null = null;
-  if (role !== "admin") {
-    if (!assignAdminCode) fail("--assign-admin <adminCode> is required unless --role admin");
+  if (role !== "admin" && assignAdminCode) {
     const admin = await prisma.employee.findUnique({ where: { employeeCode: assignAdminCode } });
     if (!admin) fail(`no employee found with code ${assignAdminCode}`);
-    if (admin.role !== "admin") fail(`${assignAdminCode} is not an admin`);
     assignedAdminId = admin.id;
+  } else if (role !== "admin") {
+    fail("--assign-admin <adminCode> is required unless --role admin");
   } else if (assignAdminCode) {
     fail("--assign-admin cannot be used with --role admin");
   }
 
-  const password = explicitPassword ?? generatePassword();
-  const passwordHash = await bcrypt.hash(password, 10);
-
-  const employee = await prisma.employee.create({
-    data: { employeeCode: code, name, email, passwordHash, role, employmentType, joinDate, assignedAdminId },
+  const result = await createEmployee({
+    email,
+    name,
+    employeeCode: code,
+    role,
+    employmentType,
+    joinDate,
+    assignedAdminId,
+    password: explicitPassword,
   });
 
+  if (!result.ok) fail(result.error);
+
+  const { employee, password, generated } = result;
   console.log(`\nCreated ${employee.role} ${employee.employeeCode} (${employee.name})`);
   console.log(`  email      ${employee.email}`);
   console.log(`  type       ${employee.employmentType}`);
   console.log(`  join date  ${employee.joinDate.toISOString().slice(0, 10)}`);
   if (assignAdminCode) console.log(`  approver   ${assignAdminCode}`);
-  if (explicitPassword) {
-    console.log("\n  Password set from --password.");
-  } else {
-    console.log(`\n  Password (shown once): ${password}`);
-  }
+  console.log(generated ? `\n  Password (shown once): ${password}` : "\n  Password set from --password.");
   console.log("\nLeave accrual starts from the next run of /api/cron/accrual,");
   console.log("which backfills any periods owed since the join date.\n");
 

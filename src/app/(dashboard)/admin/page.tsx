@@ -9,6 +9,7 @@ import { AdminRecentDecisions } from "@/components/AdminRecentDecisions";
 import { AdminWfhApprovalQueue } from "@/components/AdminWfhApprovalQueue";
 import { AdminHolidayManager } from "@/components/AdminHolidayManager";
 import { AdminEmployeeAssignment } from "@/components/AdminEmployeeAssignment";
+import { AdminEmployeeCreate } from "@/components/AdminEmployeeCreate";
 import { TodayRoster } from "@/components/TodayRoster";
 
 export default async function AdminDashboard() {
@@ -77,6 +78,11 @@ export default async function AdminDashboard() {
       <div>
         <h2 className="ef-h3 mb-3">Today&apos;s roster</h2>
         <TodayRoster roster={roster} />
+      </div>
+
+      <div>
+        <h2 className="ef-h3 mb-3">People</h2>
+        <AdminEmployeeCreate admins={admins} />
       </div>
 
       <div>
