@@ -41,9 +41,11 @@ On Vercel, the Neon integration injects its own prefixed variable (for example
 `emergeflow_hrms_DATABASE_URL`). The app reads plain `DATABASE_URL`, so add that
 as a separate variable pointing at the same database.
 
-### Seeded accounts
+### Seeded accounts (development only)
 
-All seeded accounts use the password `password123`. Do not seed production.
+All seeded accounts use the password `password123`. Never seed production - and
+if a database was seeded before going live, delete or re-password those accounts,
+because two of them are admins.
 
 | Email | Role | Notes |
 | --- | --- | --- |
@@ -52,6 +54,44 @@ All seeded accounts use the password `password123`. Do not seed production.
 | `hr@company.com` | hr | read-only roster access, cannot approve |
 | `employee.ft@company.com` | employee | full-time |
 | `employee.intern@company.com` | employee | intern |
+
+## Creating accounts
+
+There is no public signup. Employee code, role, and admin assignment are
+onboarding decisions, so accounts are created with a script:
+
+```bash
+# an admin (admins have no approver of their own)
+npx tsx scripts/create-employee.ts \
+  --email rajat@emergeflow.com --name "Rajat" --code ADM-0003 --role admin
+
+# anyone else must be assigned to an admin who will approve their requests
+npx tsx scripts/create-employee.ts \
+  --email dev@emergeflow.com --name "Dev" --code EMP-0003 \
+  --role employee --type full_time --join-date 2026-08-01 --assign-admin ADM-0003
+```
+
+| Flag | Required | Default |
+| --- | --- | --- |
+| `--email` `--name` `--code` | yes | |
+| `--role` | no | `employee` (`admin` \| `hr` \| `employee`) |
+| `--type` | no | `full_time` (`full_time` \| `intern`) |
+| `--join-date` | no | today (`YYYY-MM-DD`) |
+| `--assign-admin` | unless `--role admin` | |
+| `--password` | no | generated and printed once |
+
+Omit `--password` so a strong one is generated; it is printed once and only ever
+stored hashed. Have the person change it after first sign-in.
+
+Run it against production by pointing `DATABASE_URL` at the production database
+for that one command:
+
+```bash
+DATABASE_URL="<production url>" npx tsx scripts/create-employee.ts ...
+```
+
+Accrual backfills from the join date on the next `/api/cron/accrual` run, so a
+new joiner does not need to wait a full period to see a balance.
 
 ## Commands
 
