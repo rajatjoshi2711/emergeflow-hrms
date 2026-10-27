@@ -81,7 +81,18 @@ npx tsx scripts/create-employee.ts \
 | `--password` | no | generated and printed once |
 
 Omit `--password` so a strong one is generated; it is printed once and only ever
-stored hashed. Have the person change it after first sign-in.
+stored hashed. Have the person change it after first sign-in at `/account`,
+reachable from the Account button in any dashboard header.
+
+Changing a password re-issues the cookie on that device, so the person stays
+signed in. Sessions already open elsewhere keep working until the token expires
+(7 days) - revoking them immediately would mean checking a password version
+against the database on each request, which the edge route guard cannot do
+without a rewrite. Worth knowing if an account is ever actually compromised.
+
+There is no self-service password reset, since nothing sends email. Someone who
+forgets their password needs an admin to create them a new account, or a direct
+hash update against the database.
 
 Run it against production by pointing `DATABASE_URL` at the production database
 for that one command:
