@@ -34,6 +34,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Everyone manages their own account, whatever their role.
+  if (pathname.startsWith("/account")) {
+    return NextResponse.next();
+  }
+
   const allowedPrefix = ROLE_PREFIX[role];
   const isOwnArea = allowedPrefix && pathname.startsWith(allowedPrefix);
   // Admins and HR can also view the plain employee dashboard for their own balances.
@@ -48,5 +53,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/hr/:path*", "/employee/:path*"],
+  matcher: ["/admin/:path*", "/hr/:path*", "/employee/:path*", "/account/:path*"],
 };

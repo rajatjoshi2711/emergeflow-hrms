@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { getLeaveBalance } from "@/lib/leave";
 import { getHolidaysForYear, getHolidayPolicy } from "@/lib/holidays";
 import { getTodayRoster } from "@/lib/roster";
-import { LogoutButton } from "@/components/LogoutButton";
+import { HeaderActions } from "@/components/HeaderActions";
 import { AdminApprovalQueue } from "@/components/AdminApprovalQueue";
 import { AdminRecentDecisions } from "@/components/AdminRecentDecisions";
 import { AdminWfhApprovalQueue } from "@/components/AdminWfhApprovalQueue";
@@ -57,7 +57,7 @@ export default async function AdminDashboard() {
           <span className="ef-eyebrow">Admin</span>
           <h1 className="ef-page">{session.name}</h1>
         </div>
-        <LogoutButton />
+        <HeaderActions />
       </div>
 
       <div>

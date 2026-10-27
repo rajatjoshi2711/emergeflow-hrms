@@ -98,7 +98,7 @@ model LeaveLedgerEntry {
   reason        String?
   createdById   String?         @map("created_by")
   createdBy     Employee?       @relation("LeaveLedgerCreatedBy", fields: [createdById], references: [id])
-  createdAt     DateTime        @default(now()) @map("created_at")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([employeeId, leaveTypeId, effectiveDate])
   @@map("leave_ledger_entries")
@@ -146,8 +146,8 @@ model LeaveRequest {
   approverId    String?       @map("approver_id")
   approver      Employee?     @relation("LeaveApprover", fields: [approverId], references: [id])
   isRetroactive Boolean       @default(false) @map("is_retroactive")
-  requestedAt   DateTime      @default(now()) @map("requested_at")
-  decidedAt     DateTime?     @map("decided_at")
+  requestedAt   DateTime      @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedAt     DateTime?     @map("decided_at") @db.Timestamptz(3)
 
   days LeaveRequestDay[]
 
@@ -178,8 +178,8 @@ model WfhRequest {
   status      RequestStatus @default(pending)
   approverId  String?       @map("approver_id")
   approver    Employee?     @relation("WfhApprover", fields: [approverId], references: [id])
-  requestedAt DateTime      @default(now()) @map("requested_at")
-  decidedAt   DateTime?     @map("decided_at")
+  requestedAt DateTime      @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedAt   DateTime?     @map("decided_at") @db.Timestamptz(3)
 
   @@index([employeeId, status])
   @@index([approverId, status])
@@ -194,7 +194,7 @@ model WfhLedgerEntry {
   amount        Decimal         @db.Decimal(4, 1)
   effectiveDate DateTime        @map("effective_date") @db.Date
   reason        String?
-  createdAt     DateTime        @default(now()) @map("created_at")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([employeeId, effectiveDate])
   @@map("wfh_ledger_entries")

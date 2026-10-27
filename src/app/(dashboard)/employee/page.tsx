@@ -2,7 +2,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { LEAVE_TYPE_ID, getLeaveBalance, getWfhBalance } from "@/lib/leave";
 import { getHolidaysForYear, getHolidayPolicy, getFloatingSelections } from "@/lib/holidays";
-import { LogoutButton } from "@/components/LogoutButton";
+import { HeaderActions } from "@/components/HeaderActions";
 import { BalanceCard } from "@/components/BalanceCard";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
 import { LeaveRequestList } from "@/components/LeaveRequestList";
@@ -46,7 +46,7 @@ export default async function EmployeeDashboard() {
           <h1 className="ef-page">{session.name}</h1>
           <p className="ef-caption">{session.employeeCode}</p>
         </div>
-        <LogoutButton />
+        <HeaderActions />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

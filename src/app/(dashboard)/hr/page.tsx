@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { getTodayRoster } from "@/lib/roster";
-import { LogoutButton } from "@/components/LogoutButton";
+import { HeaderActions } from "@/components/HeaderActions";
 import { TodayRoster } from "@/components/TodayRoster";
 
 export default async function HrDashboard() {
@@ -14,7 +14,7 @@ export default async function HrDashboard() {
           <span className="ef-eyebrow">HR</span>
           <h1 className="ef-page">{session?.name}</h1>
         </div>
-        <LogoutButton />
+        <HeaderActions />
       </div>
       <div>
         <h2 className="ef-h3 mb-3">Today&apos;s roster</h2>
